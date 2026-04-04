@@ -1,0 +1,6 @@
+/target
+.folio/
+*.swp
+*.swo
+*~
+.DS_Store
