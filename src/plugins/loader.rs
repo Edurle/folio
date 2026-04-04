@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -16,25 +17,26 @@ pub enum PluginSource {
 }
 
 /// Discover plugins from user and workspace directories.
+/// Workspace-level plugins override user-level plugins with the same name.
 pub fn discover() -> Vec<PluginInfo> {
-    let mut plugins = Vec::new();
+    let mut map = HashMap::new();
 
-    // User-level plugins
+    // User-level plugins (loaded first, can be overridden)
     let user_dir = dirs_config_path();
     if user_dir.exists() {
-        discover_in_dir(&user_dir, PluginSource::User, &mut plugins);
+        discover_in_dir(&user_dir, PluginSource::User, &mut map);
     }
 
-    // Workspace-level plugins
+    // Workspace-level plugins (loaded second, overrides same-name user plugins)
     let ws_dir = PathBuf::from(".folio/plugins");
     if ws_dir.exists() {
-        discover_in_dir(&ws_dir, PluginSource::Workspace, &mut plugins);
+        discover_in_dir(&ws_dir, PluginSource::Workspace, &mut map);
     }
 
-    plugins
+    map.into_values().collect()
 }
 
-fn discover_in_dir(dir: &PathBuf, source: PluginSource, plugins: &mut Vec<PluginInfo>) {
+fn discover_in_dir(dir: &PathBuf, source: PluginSource, map: &mut HashMap<String, PluginInfo>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -45,7 +47,7 @@ fn discover_in_dir(dir: &PathBuf, source: PluginSource, plugins: &mut Vec<Plugin
                     .to_str()
                     .unwrap_or("")
                     .to_string();
-                plugins.push(PluginInfo { name, path, source: source.clone() });
+                map.insert(name.clone(), PluginInfo { name, path, source: source.clone() });
             }
         }
     }
