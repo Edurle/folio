@@ -2,7 +2,7 @@ pub mod builder;
 pub mod scanner;
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use twox_hash::XxHash64;
 
@@ -28,7 +28,7 @@ const CACHE_PATH: &str = ".folio/cache.json";
 
 /// Compute the cache path for global (non-workspace) mode.
 /// Uses ~/.cache/folio/<xxhash_hex>/cache.json keyed by the absolute root path.
-fn global_cache_path(root: &str) -> Option<std::path::PathBuf> {
+fn global_cache_path(root: &str) -> Option<PathBuf> {
     use std::hash::{Hash, Hasher};
 
     let abs_root = std::fs::canonicalize(root).ok()?;
@@ -38,7 +38,7 @@ fn global_cache_path(root: &str) -> Option<std::path::PathBuf> {
     let dir_name = format!("{:016x}", hash_val);
 
     let home = std::env::var("HOME").ok()?;
-    Some(std::path::PathBuf::from(home)
+    Some(PathBuf::from(home)
         .join(".cache")
         .join("folio")
         .join(dir_name)
@@ -75,12 +75,12 @@ pub fn build_index_incremental(root: &str) -> Result<Index, Box<dyn std::error::
     let current_files = scanner::scan_with_meta(root)?;
 
     // Build a set of current file paths for quick lookup
-    let current_paths: HashSet<std::path::PathBuf> = current_files.iter()
+    let current_paths: HashSet<PathBuf> = current_files.iter()
         .map(|f| f.path.clone())
         .collect();
 
     // Detect changes
-    let mut affected_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut affected_paths: Vec<PathBuf> = Vec::new();
     let mut _added = 0usize;
     let mut _modified = 0usize;
     let mut _deleted = 0usize;
@@ -122,7 +122,7 @@ pub fn build_index_incremental(root: &str) -> Result<Index, Box<dyn std::error::
     }
 
     // Find deleted files (in cache but not on disk)
-    let cached_paths: Vec<std::path::PathBuf> = index.files.keys().cloned().collect();
+    let cached_paths: Vec<PathBuf> = index.files.keys().cloned().collect();
     for cached_path in &cached_paths {
         if !current_paths.contains(cached_path) {
             affected_paths.push(cached_path.clone());
