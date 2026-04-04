@@ -13,10 +13,10 @@ Global mode (no `.folio/` directory) performs a full index rebuild on every CLI 
 | Mode | Cache Path |
 |------|-----------|
 | Workspace | `<root>/.folio/cache.json` (unchanged) |
-| Global | `~/.cache/folio/<sha256_prefix>/cache.json` |
+| Global | `~/.cache/folio/<xxhash64_hex>/cache.json` |
 
-- SHA-256 hash of the absolute root path, truncated to 16 hex characters for the directory name.
-- Example: `/home/user/docs` → `~/.cache/folio/a1b2c3d4e5f6g7h8/cache.json`
+- XxHash64 (seed 0) of the canonicalized absolute root path, formatted as 16 hex characters for the directory name. Uses the existing `twox-hash` dependency.
+- Example: `/home/user/docs` → `~/.cache/folio/a1b2c3d4e5f67890/cache.json`
 
 ### Changes
 
