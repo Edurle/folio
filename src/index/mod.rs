@@ -4,6 +4,8 @@ pub mod scanner;
 use std::collections::HashSet;
 use std::path::Path;
 
+use twox_hash::XxHash64;
+
 use crate::models::{self, Index};
 
 /// Build a full index from scratch (original behavior).
@@ -23,6 +25,25 @@ pub fn build_index(root: &str) -> Result<Index, Box<dyn std::error::Error>> {
 }
 
 const CACHE_PATH: &str = ".folio/cache.json";
+
+/// Compute the cache path for global (non-workspace) mode.
+/// Uses ~/.cache/folio/<xxhash_hex>/cache.json keyed by the absolute root path.
+fn global_cache_path(root: &str) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+
+    let abs_root = std::fs::canonicalize(root).ok()?;
+    let mut hasher = XxHash64::with_seed(0);
+    abs_root.hash(&mut hasher);
+    let hash_val = hasher.finish();
+    let dir_name = format!("{:016x}", hash_val);
+
+    let home = std::env::var("HOME").ok()?;
+    Some(std::path::PathBuf::from(home)
+        .join(".cache")
+        .join("folio")
+        .join(dir_name)
+        .join("cache.json"))
+}
 
 /// Build index with incremental update support.
 ///
