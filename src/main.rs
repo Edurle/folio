@@ -840,13 +840,20 @@ fn cmd_plugin(action: cli::PluginAction) -> Result<(), Box<dyn std::error::Error
     match action {
         cli::PluginAction::List => {
             let discovered = plugins::loader::discover();
-            let list: Vec<_> = discovered.iter().map(|p| {
-                serde_json::json!({
+            let mut list = Vec::new();
+            for p in &discovered {
+                let commands = plugins::runtime::list_commands(&p.path)
+                    .unwrap_or_default();
+                let cmd_info: Vec<_> = commands.iter().map(|(name, desc)| {
+                    serde_json::json!({ "name": name, "description": desc })
+                }).collect();
+                list.push(serde_json::json!({
                     "name": p.name,
                     "path": p.path.to_str().unwrap_or(""),
                     "source": format!("{:?}", p.source),
-                })
-            }).collect();
+                    "commands": cmd_info,
+                }));
+            }
 
             let result = serde_json::json!({
                 "plugins": list,
@@ -860,14 +867,31 @@ fn cmd_plugin(action: cli::PluginAction) -> Result<(), Box<dyn std::error::Error
 
             match plugin {
                 Some(p) => {
-                    let result = serde_json::json!({
-                        "status": "ok",
-                        "plugin": name,
-                        "args": args,
-                        "source": p.path.to_str().unwrap_or(""),
-                        "note": "Lua execution not yet implemented - plugin loaded successfully",
-                    });
-                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    let command = args.first().map(|s| s.as_str()).unwrap_or("help");
+                    let remaining = if args.len() > 1 { args[1..].to_vec() } else { vec![] };
+                    let workspace_root = std::env::current_dir()?
+                        .to_str()
+                        .unwrap_or(".")
+                        .to_string();
+
+                    match plugins::runtime::run_plugin(&p.path, command, &remaining, &workspace_root) {
+                        Ok(output) => {
+                            // Try to pretty-print if it's valid JSON
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&output) {
+                                println!("{}", serde_json::to_string_pretty(&json)?);
+                            } else {
+                                println!("{}", output);
+                            }
+                        }
+                        Err(e) => {
+                            let result = serde_json::json!({
+                                "status": "error",
+                                "plugin": name,
+                                "message": format!("{}", e),
+                            });
+                            println!("{}", serde_json::to_string(&result)?);
+                        }
+                    }
                 }
                 None => {
                     let result = serde_json::json!({

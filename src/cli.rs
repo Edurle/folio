@@ -229,7 +229,8 @@ pub enum PluginAction {
     Run {
         /// Plugin name
         name: String,
-        /// Plugin subcommand and arguments
+        /// Plugin subcommand and arguments (use -- to separate plugin args from folio args)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
 }
