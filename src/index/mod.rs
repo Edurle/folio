@@ -47,15 +47,18 @@ fn global_cache_path(root: &str) -> Option<std::path::PathBuf> {
 
 /// Build index with incremental update support.
 ///
-/// In workspace mode (.folio/ exists), loads cached index and only
-/// reprocesses files that have been added, modified, or deleted.
+/// In workspace mode (.folio/ exists), loads cached index from .folio/cache.json.
+/// In global mode, loads cached index from ~/.cache/folio/<hash>/cache.json.
 /// Falls back to full rebuild when no cache exists.
 pub fn build_index_incremental(root: &str) -> Result<Index, Box<dyn std::error::Error>> {
-    if !models::is_workspace(root) {
-        return build_index(root);
-    }
-
-    let cache_path = Path::new(root).join(CACHE_PATH);
+    let cache_path = if models::is_workspace(root) {
+        Path::new(root).join(CACHE_PATH)
+    } else {
+        match global_cache_path(root) {
+            Some(p) => p,
+            None => return build_index(root),
+        }
+    };
 
     // Try to load cached index
     let mut index = match Index::load_from_file(&cache_path) {
