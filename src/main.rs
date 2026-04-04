@@ -317,7 +317,7 @@ fn cmd_mv(src: &str, dst: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 fn cmd_ls(path: Option<&str>, _tag: Option<&str>, _filter: Option<&str>, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
     let dir = path.unwrap_or(".");
-    let idx = index::build_index(dir)?;
+    let idx = index::build_index_incremental(dir)?;
 
     let mut entries: Vec<_> = idx.files.values().map(|entry| {
         let backlinks: Vec<_> = entry.backlinks.iter()
@@ -349,7 +349,7 @@ fn cmd_ls(path: Option<&str>, _tag: Option<&str>, _filter: Option<&str>, pretty:
 }
 
 fn cmd_query(root: &str, expression: &str, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index(root)?;
+    let idx = index::build_index_incremental(root)?;
 
     let results = query::executor::execute(&idx, expression).map_err(|e| {
         Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
@@ -393,7 +393,7 @@ fn cmd_query(root: &str, expression: &str, pretty: bool) -> Result<(), Box<dyn s
 }
 
 fn cmd_search(root: &str, text: &str, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index(root)?;
+    let idx = index::build_index_incremental(root)?;
     let mut results = Vec::new();
 
     for entry in idx.files.values() {
@@ -445,7 +445,7 @@ fn cmd_graph(
     path_between: Option<&[String]>,
     pretty: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index(".")?;
+    let idx = index::build_index_incremental(".")?;
 
     let result = if orphans {
         let orphan_files = commands::graph::orphans(&idx);
@@ -529,7 +529,7 @@ fn cmd_graph(
 }
 
 fn cmd_tags(root: &str, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index(root)?;
+    let idx = index::build_index_incremental(root)?;
 
     let tags: Vec<_> = idx.tags.iter().map(|(tag, paths)| {
         serde_json::json!({
@@ -603,7 +603,7 @@ fn cmd_template(action: cli::TemplateAction) -> Result<(), Box<dyn std::error::E
 }
 
 fn cmd_batch(action: cli::BatchAction) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index(".")?;
+    let idx = index::build_index_incremental(".")?;
 
     match action {
         cli::BatchAction::Set { pairs, query, glob, dry_run } => {
@@ -835,7 +835,7 @@ fn cmd_status() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let idx = index::build_index(".")?;
+    let idx = index::build_index_incremental(".")?;
 
     let result = serde_json::json!({
         "workspace": true,
@@ -853,7 +853,7 @@ fn cmd_status() -> Result<(), Box<dyn std::error::Error>> {
 
 fn cmd_index() -> Result<(), Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
-    let idx = index::build_index(".")?;
+    let idx = index::build_index_incremental(".")?;
     let elapsed = start.elapsed();
 
     let result = serde_json::json!({
