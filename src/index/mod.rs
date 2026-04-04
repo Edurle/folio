@@ -141,3 +141,107 @@ pub fn build_index_incremental(root: &str) -> Result<Index, Box<dyn std::error::
 
     Ok(index)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_global_cache_path_produces_valid_path() {
+        let root = ".";
+        let path = global_cache_path(root);
+        assert!(path.is_some(), "global_cache_path should return Some for valid root");
+
+        let cache = path.unwrap();
+        assert!(cache.to_string_lossy().contains(".cache/folio/"));
+        assert!(cache.to_string_lossy().ends_with("cache.json"));
+    }
+
+    #[test]
+    fn test_global_cache_path_deterministic() {
+        let root = ".";
+        let p1 = global_cache_path(root);
+        let p2 = global_cache_path(root);
+        assert_eq!(p1, p2, "same root should produce same cache path");
+    }
+
+    #[test]
+    fn test_global_cache_path_different_roots() {
+        let p1 = global_cache_path(".");
+        let p2 = global_cache_path("..");
+        assert_ne!(p1, p2, "different roots should produce different cache paths");
+    }
+
+    #[test]
+    fn test_global_incremental_creates_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_str().unwrap();
+
+        let md_file = tmp.path().join("test.md");
+        fs::write(&md_file, "# Hello\n\nworld\n").unwrap();
+
+        let idx1 = build_index_incremental(root).unwrap();
+        assert_eq!(idx1.files.len(), 1);
+
+        let abs_root = std::fs::canonicalize(root).unwrap();
+        let cache_path = global_cache_path(abs_root.to_str().unwrap()).unwrap();
+        assert!(cache_path.exists(), "cache file should be created after build");
+
+        let idx2 = build_index_incremental(root).unwrap();
+        assert_eq!(idx2.files.len(), 1);
+
+        if let Some(parent) = cache_path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn test_global_incremental_detects_modification() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_str().unwrap();
+
+        let md_file = tmp.path().join("note.md");
+        fs::write(&md_file, "# Original\n").unwrap();
+
+        let idx1 = build_index_incremental(root).unwrap();
+        assert_eq!(idx1.files.len(), 1);
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(&md_file, "# Modified\n\nextra content\n").unwrap();
+
+        let idx2 = build_index_incremental(root).unwrap();
+        assert_eq!(idx2.files.len(), 1);
+
+        let abs_root = std::fs::canonicalize(root).unwrap();
+        let cache_path = global_cache_path(abs_root.to_str().unwrap()).unwrap();
+        if let Some(parent) = cache_path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn test_global_incremental_detects_deletion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_str().unwrap();
+
+        let f1 = tmp.path().join("a.md");
+        let f2 = tmp.path().join("b.md");
+        fs::write(&f1, "# A\n").unwrap();
+        fs::write(&f2, "# B\n").unwrap();
+
+        let idx1 = build_index_incremental(root).unwrap();
+        assert_eq!(idx1.files.len(), 2);
+
+        fs::remove_file(&f1).unwrap();
+
+        let idx2 = build_index_incremental(root).unwrap();
+        assert_eq!(idx2.files.len(), 1);
+
+        let abs_root = std::fs::canonicalize(root).unwrap();
+        let cache_path = global_cache_path(abs_root.to_str().unwrap()).unwrap();
+        if let Some(parent) = cache_path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+}
