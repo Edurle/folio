@@ -205,20 +205,37 @@ fn edit_section(path: &str, heading: &str, content: Option<&str>) -> Result<(), 
             let section_level = section.level;
             let prefix = "#".repeat(section_level as usize);
 
-            let before = &body[..section.content_start];
-            let after = if idx + 1 < md_result.sections.len() {
-                &body[md_result.sections[idx + 1].content_start..]
+            // Find section boundaries by string search instead of byte offsets
+            let heading_line = format!("{} {}", prefix, heading);
+            let section_start = body.find(&heading_line).unwrap_or(0);
+
+            // Find the end: either the next heading of same or higher level, or end of body
+            let after_heading = &body[section_start + heading_line.len()..];
+            let section_end = if idx + 1 < md_result.sections.len() {
+                let next_section = &md_result.sections[idx + 1];
+                let next_prefix = "#".repeat(next_section.level as usize);
+                let next_heading_line = format!("{} {}", next_prefix, next_section.heading);
+                after_heading.find(&next_heading_line)
+                    .map(|pos| section_start + heading_line.len() + pos)
+                    .unwrap_or(body.len())
             } else {
-                ""
+                body.len()
+            };
+
+            let before = &body[..section_start];
+            let after = &body[section_end..];
+
+            // If user's content already starts with the heading line, use it as-is
+            let section_block = if new_section_content.trim().starts_with(&format!("{} {}", prefix, heading)) {
+                format!("{}\n{}", new_section_content.trim(), after)
+            } else {
+                format!("{} {}\n\n{}\n{}", prefix, heading, new_section_content.trim(), after)
             };
 
             let new_body = format!(
-                "{}{} {}\n\n{}\n\n{}",
+                "{}{}",
                 before,
-                prefix,
-                heading,
-                new_section_content.trim(),
-                after
+                section_block
             );
 
             let new_content = format!(
@@ -409,6 +426,18 @@ fn cmd_search(root: &str, text: &str, pretty: bool) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+/// Normalize a path to match index keys: ensure "./" prefix for relative paths.
+fn normalize_path(p: &str) -> PathBuf {
+    let pb = PathBuf::from(p);
+    if pb.is_absolute() {
+        pb
+    } else if p.starts_with("./") {
+        pb
+    } else {
+        PathBuf::from(format!("./{}", p))
+    }
+}
+
 fn cmd_graph(
     path: Option<&str>,
     full: bool,
@@ -459,7 +488,8 @@ fn cmd_graph(
             }
         }
     } else if let Some(p) = path {
-        match commands::graph::file_graph(&idx, p) {
+        let normalized = normalize_path(p);
+        match commands::graph::file_graph(&idx, normalized.to_str().unwrap_or(p)) {
             Some(graph) => {
                 serde_json::json!({
                     "node": serde_json::json!({

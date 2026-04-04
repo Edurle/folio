@@ -47,7 +47,7 @@ pub fn full_graph(index: &Index) -> GraphResult {
 
 /// Get graph info for a single file.
 pub fn file_graph(index: &Index, path: &str) -> Option<GraphResult> {
-    let path_buf = std::path::PathBuf::from(path);
+    let path_buf = normalize_lookup_path(path);
     let entry = index.files.get(&path_buf)?;
 
     let mut nodes = Vec::new();
@@ -110,22 +110,47 @@ pub fn orphans(index: &Index) -> Vec<&str> {
         .collect()
 }
 
+/// Normalize a path for index lookup: ensure "./" prefix for relative paths.
+fn normalize_lookup_path(p: &str) -> std::path::PathBuf {
+    let pb = std::path::PathBuf::from(p);
+    if pb.is_absolute() || p.starts_with("./") {
+        pb
+    } else {
+        std::path::PathBuf::from(format!("./{}", p))
+    }
+}
+
 /// Find shortest path between two files via links (BFS).
 pub fn shortest_path(index: &Index, from: &str, to: &str) -> Option<Vec<String>> {
-    let from_path = std::path::PathBuf::from(from);
-    let to_path = std::path::PathBuf::from(to);
+    let from_path = normalize_lookup_path(from);
+    let to_path = normalize_lookup_path(to);
 
     if !index.files.contains_key(&from_path) || !index.files.contains_key(&to_path) {
         return None;
+    }
+
+    // Build a lookup map that can resolve link targets to index keys.
+    // Link targets may be bare names like "rust-advanced" while index keys
+    // are like "./rust-advanced.md". Build a resolution map.
+    let mut target_to_index_key: HashMap<std::path::PathBuf, &std::path::PathBuf> = HashMap::new();
+    for key in index.files.keys() {
+        // Map by stem name (e.g. "rust-advanced" from "./rust-advanced.md")
+        if let Some(stem) = key.file_stem().and_then(|s| s.to_str()) {
+            target_to_index_key.insert(std::path::PathBuf::from(stem), key);
+        }
+        // Also map by the key itself
+        target_to_index_key.insert(key.clone(), key);
     }
 
     // Build adjacency list (bidirectional)
     let mut adj: HashMap<&std::path::PathBuf, Vec<&std::path::PathBuf>> = HashMap::new();
     for (path, entry) in &index.files {
         for link in &entry.outgoing_links {
-            if index.files.contains_key(&link.target) {
-                adj.entry(path).or_default().push(&link.target);
-                adj.entry(&link.target).or_default().push(path);
+            // Try to resolve the link target to an index key
+            let resolved = target_to_index_key.get(&link.target);
+            if let Some(target_key) = resolved {
+                adj.entry(path).or_default().push(target_key);
+                adj.entry(*target_key).or_default().push(path);
             }
         }
     }
