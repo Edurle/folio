@@ -119,6 +119,7 @@ fn compare(field_value: &str, op: &Op, value: &Value, _entry: &FileEntry) -> boo
                 _ => false,
             })
         }
+        (Op::StartsWith, Value::String(s)) => field_value.starts_with(s.as_str()),
         _ => false,
     }
 }
@@ -194,6 +195,17 @@ mod tests {
 
         let results = execute(&index, "status in ['draft', 'review']").unwrap();
         assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_execute_starts_with() {
+        let mut index = Index::new();
+        index.insert(make_test_entry("./memory/note.md", "Memory Note", vec!["mem"], "draft"));
+        index.insert(make_test_entry("./docs/guide.md", "Docs Guide", vec!["doc"], "published"));
+
+        let results = execute(&index, "path starts_with './memory/'").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, Some("Memory Note".to_string()));
     }
 
     #[test]

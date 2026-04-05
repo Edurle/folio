@@ -24,6 +24,9 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    let root = cli.workspace.clone().unwrap_or_else(|| ".".to_string());
+    let scope = cli.scope.as_deref();
+
     match cli.command {
         Commands::New { path, template, content } => {
             cmd_new(&path, template.as_deref(), content.as_deref())?;
@@ -41,34 +44,34 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             cmd_mv(&src, &dst)?;
         }
         Commands::Ls { path, tag, filter } => {
-            cmd_ls(path.as_deref(), tag.as_deref(), filter.as_deref(), cli.pretty)?;
+            cmd_ls(path.as_deref(), tag.as_deref(), filter.as_deref(), cli.pretty, &root, scope)?;
         }
         Commands::Query { expression } => {
-            cmd_query(".", &expression, cli.pretty)?;
+            cmd_query(&root, &expression, cli.pretty, scope)?;
         }
         Commands::Search { text } => {
-            cmd_search(".", &text, cli.pretty)?;
+            cmd_search(&root, &text, cli.pretty, scope)?;
         }
         Commands::Tags => {
-            cmd_tags(".", cli.pretty)?;
+            cmd_tags(&root, cli.pretty, scope)?;
         }
         Commands::Graph { path, full, orphans, path_between } => {
-            cmd_graph(path.as_deref(), full, orphans, path_between.as_deref(), cli.pretty)?;
+            cmd_graph(path.as_deref(), full, orphans, path_between.as_deref(), cli.pretty, &root, scope)?;
         }
         Commands::Template { action } => {
             cmd_template(action)?;
         }
         Commands::Batch { action } => {
-            cmd_batch(action)?;
+            cmd_batch(action, &root, scope)?;
         }
         Commands::Init => {
             cmd_init()?;
         }
         Commands::Status => {
-            cmd_status()?;
+            cmd_status(&root, scope)?;
         }
         Commands::Index => {
-            cmd_index()?;
+            cmd_index(&root, scope)?;
         }
         Commands::Plugin { action } => {
             cmd_plugin(action)?;
@@ -315,9 +318,9 @@ fn cmd_mv(src: &str, dst: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn cmd_ls(path: Option<&str>, _tag: Option<&str>, _filter: Option<&str>, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = path.unwrap_or(".");
-    let idx = index::build_index_incremental(dir)?;
+fn cmd_ls(path: Option<&str>, _tag: Option<&str>, _filter: Option<&str>, pretty: bool, root: &str, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = path.unwrap_or(root);
+    let idx = index::build_index_incremental(dir, scope)?;
 
     let mut entries: Vec<_> = idx.files.values().map(|entry| {
         let backlinks: Vec<_> = entry.backlinks.iter()
@@ -348,8 +351,8 @@ fn cmd_ls(path: Option<&str>, _tag: Option<&str>, _filter: Option<&str>, pretty:
     Ok(())
 }
 
-fn cmd_query(root: &str, expression: &str, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index_incremental(root)?;
+fn cmd_query(root: &str, expression: &str, pretty: bool, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let idx = index::build_index_incremental(root, scope)?;
 
     let results = query::executor::execute(&idx, expression).map_err(|e| {
         Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
@@ -392,8 +395,8 @@ fn cmd_query(root: &str, expression: &str, pretty: bool) -> Result<(), Box<dyn s
     Ok(())
 }
 
-fn cmd_search(root: &str, text: &str, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index_incremental(root)?;
+fn cmd_search(root: &str, text: &str, pretty: bool, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let idx = index::build_index_incremental(root, scope)?;
     let mut results = Vec::new();
 
     for entry in idx.files.values() {
@@ -444,8 +447,10 @@ fn cmd_graph(
     orphans: bool,
     path_between: Option<&[String]>,
     pretty: bool,
+    root: &str,
+    scope: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index_incremental(".")?;
+    let idx = index::build_index_incremental(root, scope)?;
 
     let result = if orphans {
         let orphan_files = commands::graph::orphans(&idx);
@@ -528,8 +533,8 @@ fn cmd_graph(
     Ok(())
 }
 
-fn cmd_tags(root: &str, pretty: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index_incremental(root)?;
+fn cmd_tags(root: &str, pretty: bool, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let idx = index::build_index_incremental(root, scope)?;
 
     let tags: Vec<_> = idx.tags.iter().map(|(tag, paths)| {
         serde_json::json!({
@@ -602,8 +607,8 @@ fn cmd_template(action: cli::TemplateAction) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-fn cmd_batch(action: cli::BatchAction) -> Result<(), Box<dyn std::error::Error>> {
-    let idx = index::build_index_incremental(".")?;
+fn cmd_batch(action: cli::BatchAction, root: &str, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let idx = index::build_index_incremental(root, scope)?;
 
     match action {
         cli::BatchAction::Set { pairs, query, glob, dry_run } => {
@@ -822,7 +827,7 @@ exclude = [".git", "node_modules"]
     Ok(())
 }
 
-fn cmd_status() -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_status(root: &str, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let folio_path = PathBuf::from(FOLIO_DIR);
     let is_workspace = folio_path.exists();
 
@@ -835,7 +840,7 @@ fn cmd_status() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let idx = index::build_index_incremental(".")?;
+    let idx = index::build_index_incremental(root, scope)?;
 
     let result = serde_json::json!({
         "workspace": true,
@@ -851,9 +856,9 @@ fn cmd_status() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn cmd_index() -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_index(root: &str, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
-    let idx = index::build_index_incremental(".")?;
+    let idx = index::build_index_incremental(root, scope)?;
     let elapsed = start.elapsed();
 
     let result = serde_json::json!({

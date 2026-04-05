@@ -24,6 +24,7 @@ pub enum Token {
     Contains,
     Matches,
     In,
+    StartsWith,
 
     // Special functions
     Func(String),       // linked_from, etc.
@@ -143,6 +144,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     "contains" => tokens.push(Token::Contains),
                     "matches" => tokens.push(Token::Matches),
                     "in" => tokens.push(Token::In),
+                    "starts_with" => tokens.push(Token::StartsWith),
                     "true" => tokens.push(Token::Boolean(true)),
                     "false" => tokens.push(Token::Boolean(false)),
                     s if s.starts_with("frontmatter.") => {
@@ -192,6 +194,14 @@ mod tests {
         let tokens = tokenize("count >= 5 AND age != 10").unwrap();
         assert!(tokens.contains(&Token::Gte));
         assert!(tokens.contains(&Token::Neq));
+    }
+
+    #[test]
+    fn test_tokenize_starts_with() {
+        let tokens = tokenize("path starts_with 'memory/'").unwrap();
+        assert_eq!(tokens[0], Token::Field("path".to_string()));
+        assert_eq!(tokens[1], Token::StartsWith);
+        assert_eq!(tokens[2], Token::String("memory/".to_string()));
     }
 
     #[test]

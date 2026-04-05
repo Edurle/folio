@@ -30,6 +30,7 @@ pub enum Op {
     Contains,
     Matches,
     In,
+    StartsWith,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -132,6 +133,7 @@ impl Parser {
             Token::Contains => Op::Contains,
             Token::Matches => Op::Matches,
             Token::In => Op::In,
+            Token::StartsWith => Op::StartsWith,
             t => return Err(format!("Expected operator, got {:?}", t)),
         };
         self.advance();
@@ -224,6 +226,17 @@ mod tests {
             Expr::Comparison { is_frontmatter: true, .. } => {}
             e => panic!("Expected frontmatter comparison, got {:?}", e),
         }
+    }
+
+    #[test]
+    fn test_parse_starts_with() {
+        let expr = parse("path starts_with 'memory/'").unwrap();
+        assert_eq!(expr, Expr::Comparison {
+            field: "path".to_string(),
+            is_frontmatter: false,
+            op: Op::StartsWith,
+            value: Value::String("memory/".to_string()),
+        });
     }
 
     #[test]

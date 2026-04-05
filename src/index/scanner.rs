@@ -65,6 +65,37 @@ fn scan_recursive_meta(dir: &PathBuf, result: &mut Vec<FileMeta>) -> Result<(), 
     Ok(())
 }
 
+/// Recursively scan for .md files within a scope subdirectory.
+/// When scope is Some("memory"), scans root/memory/ instead of root.
+pub fn scan_with_scope(root: &str, scope: Option<&str>) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let effective_root = match scope {
+        Some(s) => {
+            let scoped = PathBuf::from(root).join(s);
+            if !scoped.exists() {
+                return Ok(Vec::new());
+            }
+            scoped.to_str().unwrap_or(root).to_string()
+        }
+        None => root.to_string(),
+    };
+    scan(&effective_root)
+}
+
+/// Recursively scan for .md files with metadata within a scope subdirectory.
+pub fn scan_with_meta_and_scope(root: &str, scope: Option<&str>) -> Result<Vec<FileMeta>, Box<dyn std::error::Error>> {
+    let effective_root = match scope {
+        Some(s) => {
+            let scoped = PathBuf::from(root).join(s);
+            if !scoped.exists() {
+                return Ok(Vec::new());
+            }
+            scoped.to_str().unwrap_or(root).to_string()
+        }
+        None => root.to_string(),
+    };
+    scan_with_meta(&effective_root)
+}
+
 /// Recursively scan a directory for .md files, skipping hidden directories.
 pub fn scan(root: &str) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut result = Vec::new();
@@ -132,5 +163,39 @@ mod tests {
         let files = scan(dir.path().to_str().unwrap()).unwrap();
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("visible.md"));
+    }
+
+    #[test]
+    fn test_scan_with_scope_filters_to_subdirectory() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("memory")).unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::write(dir.path().join("memory/a.md"), "# A").unwrap();
+        fs::write(dir.path().join("docs/b.md"), "# B").unwrap();
+        fs::write(dir.path().join("root.md"), "# Root").unwrap();
+
+        let files = scan_with_scope(dir.path().to_str().unwrap(), Some("memory")).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("memory/a.md"));
+    }
+
+    #[test]
+    fn test_scan_with_scope_none_returns_all() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("memory")).unwrap();
+        fs::write(dir.path().join("memory/a.md"), "# A").unwrap();
+        fs::write(dir.path().join("root.md"), "# Root").unwrap();
+
+        let files = scan_with_scope(dir.path().to_str().unwrap(), None).unwrap();
+        assert_eq!(files.len(), 2);
+    }
+
+    #[test]
+    fn test_scan_with_scope_nonexistent_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("root.md"), "# Root").unwrap();
+
+        let files = scan_with_scope(dir.path().to_str().unwrap(), Some("nonexistent")).unwrap();
+        assert!(files.is_empty());
     }
 }

@@ -16,6 +16,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub workspace: Option<String>,
 
+    /// Limit scanning to a subdirectory (relative to workspace root)
+    #[arg(long, global = true)]
+    pub scope: Option<String>,
+
     /// Skip indexing, operate directly on files
     #[arg(long, global = true)]
     pub no_index: bool,
